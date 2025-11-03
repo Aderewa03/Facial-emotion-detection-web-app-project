@@ -398,177 +398,113 @@
         </div>
     </div>
 
-    <script>
-        // ===================================================================
-        // JAVASCRIPT FOR FORM HANDLING AND IMAGE PREVIEW
-        // ===================================================================
+   <script>
+    const form = document.getElementById('uploadForm');
+    const fileInput = document.getElementById('fileInput');
+    const fileUploadArea = document.getElementById('fileUploadArea');
+    const imagePreview = document.getElementById('imagePreview');
+    const submitBtn = document.getElementById('submitBtn');
+    const loading = document.getElementById('loading');
+    const result = document.getElementById('result');
+    const alertBox = document.getElementById('alert');
 
-        const form = document.getElementById('uploadForm');
-        const fileInput = document.getElementById('fileInput');
-        const fileUploadArea = document.getElementById('fileUploadArea');
-        const imagePreview = document.getElementById('imagePreview');
-        const submitBtn = document.getElementById('submitBtn');
-        const loading = document.getElementById('loading');
-        const result = document.getElementById('result');
-        const alert = document.getElementById('alert');
+    const emotionEmojis = {
+        happy: '😊',
+        sad: '😢',
+        angry: '😠',
+        surprise: '😲',
+        fear: '😨',
+        disgust: '🤢',
+        neutral: '😐'
+    };
 
-        // Emotion emoji mapping
-        const emotionEmojis = {
-            'happy': '😊',
-            'sad': '😢',
-            'angry': '😠',
-            'surprise': '😲',
-            'fear': '😨',
-            'disgust': '🤢',
-            'neutral': '😐'
+    // --- Drag and Drop ---
+    fileUploadArea.addEventListener('click', () => fileInput.click());
+    fileUploadArea.addEventListener('dragover', e => {
+        e.preventDefault();
+        fileUploadArea.classList.add('dragover');
+    });
+    fileUploadArea.addEventListener('dragleave', () => fileUploadArea.classList.remove('dragover'));
+    fileUploadArea.addEventListener('drop', e => {
+        e.preventDefault();
+        fileUploadArea.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith('image/')) {
+            fileInput.files = e.dataTransfer.files;
+            handleFileSelect(file);
+        } else {
+            showAlert('Please upload a valid image file!');
+        }
+    });
+
+    // --- Image preview ---
+    fileInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (file) handleFileSelect(file);
+    });
+
+    function handleFileSelect(file) {
+        const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
+        if (!validTypes.includes(file.type)) {
+            showAlert('Invalid file type. Please upload PNG, JPG, or GIF.');
+            fileInput.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = e => {
+            imagePreview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+            imagePreview.style.display = 'block';
         };
+        reader.readAsDataURL(file);
+    }
 
-        // ===== FILE UPLOAD CLICK HANDLER =====
-        fileUploadArea.addEventListener('click', () => {
-            fileInput.click();
-        });
+    // --- Show alert ---
+    function showAlert(message) {
+        alertBox.textContent = message;
+        alertBox.style.display = 'block';
+        setTimeout(() => (alertBox.style.display = 'none'), 3000);
+    }
 
-        // ===== FILE INPUT CHANGE HANDLER =====
-        fileInput.addEventListener('change', (e) => {
-            handleFileSelect(e.target.files[0]);
-        });
+    // --- Handle form submit ---
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
 
-        // ===== DRAG AND DROP HANDLERS =====
-        fileUploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            fileUploadArea.classList.add('dragover');
-        });
+        const file = fileInput.files[0];
+        if (!file) return showAlert('Please select an image before submitting.');
 
-        fileUploadArea.addEventListener('dragleave', () => {
-            fileUploadArea.classList.remove('dragover');
-        });
+        const formData = new FormData(form);
+        loading.style.display = 'block';
+        submitBtn.disabled = true;
+        result.style.display = 'none';
 
-        fileUploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            fileUploadArea.classList.remove('dragover');
-            
-            const file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) {
-                fileInput.files = e.dataTransfer.files;
-                handleFileSelect(file);
+        try {
+            const response = await fetch('/predict', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            loading.style.display = 'none';
+            submitBtn.disabled = false;
+
+            if (response.ok) {
+                const emoji = emotionEmojis[data.emotion] || '🙂';
+                document.getElementById('resultEmoji').textContent = emoji;
+                document.getElementById('resultEmotion').textContent = data.emotion.toUpperCase();
+                document.getElementById('confidenceText').textContent = `${data.confidence}%`;
+                const fill = document.getElementById('confidenceFill');
+                fill.style.width = `${data.confidence}%`;
+                fill.textContent = `${data.confidence}%`;
+
+                result.style.display = 'block';
             } else {
-                showAlert('Please upload a valid image file!');
+                showAlert(data.error || 'Something went wrong.');
             }
-        });
-
-        // ===== HANDLE FILE SELECTION =====
-        function handleFileSelect(file) {
-            if (!file) return;
-
-            // Validate file type
-            const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
-            if (!validTypes.includes(file.type)) {
-                showAlert('Invalid file type! Please upload PNG, JPG, or GIF.');
-                return;
-            }
-
-            // Validate file size (16MB)
-            if (file.size > 16 * 1024 * 1024) {
-                showAlert('File too large! Maximum size is 16MB.');
-                return;
-            }
-
-            // Show image preview
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                imagePreview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
-                imagePreview.style.display = 'block';
-            };
-            reader.readAsDataURL(file);
-
-            // Hide any previous alerts
-            hideAlert();
+        } catch (err) {
+            loading.style.display = 'none';
+            submitBtn.disabled = false;
+            showAlert('Server error. Please try again later.');
         }
-
-        // ===== FORM SUBMISSION =====
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            // Validate form
-            const name = document.getElementById('name').value.trim();
-            const email = document.getElementById('email').value.trim();
-            const file = fileInput.files[0];
-
-            if (!name || !email) {
-                showAlert('Please fill in all required fields!');
-                return;
-            }
-
-            if (!file) {
-                showAlert('Please upload an image!');
-                return;
-            }
-
-            // Prepare form data
-            const formData = new FormData(form);
-
-            // Show loading, hide form and results
-            submitBtn.disabled = true;
-            loading.style.display = 'block';
-            result.style.display = 'none';
-            hideAlert();
-
-            try {
-                // Send request to server
-                const response = await fetch('/predict', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                // Hide loading
-                loading.style.display = 'none';
-                submitBtn.disabled = false;
-
-                if (data.success) {
-                    // Show success result
-                    showResult(data);
-                } else {
-                    // Show error
-                    showAlert(data.error || 'An error occurred. Please try again.');
-                }
-
-            } catch (error) {
-                console.error('Error:', error);
-                loading.style.display = 'none';
-                submitBtn.disabled = false;
-                showAlert('Network error! Please check your connection and try again.');
-            }
-        });
-
-        // ===== SHOW RESULT =====
-        function showResult(data) {
-            const emotion = data.emotion;
-            const confidence = data.confidence;
-            const message = data.message;
-
-            // Set emoji
-            document.getElementById('resultEmoji').textContent = emotionEmojis[emotion] || '😊';
-
-            // Set emotion text
-            document.getElementById('resultEmotion').textContent = emotion.charAt(0).toUpperCase() + emotion.slice(1);
-
-            // Set message
-            document.getElementById('resultMessage').textContent = message;
-
-            // Set confidence
-            document.getElementById('confidenceText').textContent = confidence + '%';
-
-            // Animate confidence bar
-            setTimeout(() => {
-                const confidenceFill = document.getElementById('confidenceFill');
-                confidenceFill.style.width = confidence + '%';
-                confidenceFill.textContent = confidence + '%';
-            }, 100);
-
-            // Show result
-            result.className = 'result success';
-            result.style.display = 'block';
-
-        }
+    });
+</script>
